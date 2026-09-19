@@ -1,0 +1,6 @@
+[submodule "print-watcher"]
+	path = print-watcher
+	url = git@github.com:nedergaard/print-watcher.git
+[submodule "snapmaker-u1-drybox-nfc-reader"]
+	path = snapmaker-u1-drybox-nfc-reader
+	url = git@github.com:nedergaard/snapmaker-u1-drybox-nfc-reader.git
