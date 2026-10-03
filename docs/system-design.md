@@ -8,7 +8,7 @@ model for the print-tracking feature.
 Two things follow from that, and both matter when reading:
 
 - Where this document and the ADRs once disagreed, the ADRs win and this
-  document has been updated to match. `adr/0001` through `0006` are the record of why.
+  document has been updated to match. `adr/0001` through `0007` are the record of why.
 - The vault does not fully match this document yet. Roughly 680 legacy notes predate the
   split described below and are converted by a one-shot migration tool. *Divergences From
   The Vault As It Stands*, at the end, lists what is known to differ.
@@ -19,6 +19,7 @@ This Obsidian-based system tracks:
 
 - Print history
 - Filament inventory and consumption
+- Master-spool inventory
 - Nozzle wear
 - Model usage
 - Cost and production metrics
@@ -50,6 +51,7 @@ Examples:
 - Models printed
 - Number of units printed
 - Spool weight measurements
+- Which master spool is mounted on which spool
 
 ### Derived
 
@@ -60,6 +62,7 @@ Examples:
 - Estimated print time allocation between models
 - Estimated filament remaining
 - Stock on hand
+- Free master spools
 
 Note that "nozzle used" is stored and "nozzle wear" is derived. The stored fact has to
 come from somewhere: see *Nozzle Installation*.
@@ -253,11 +256,14 @@ Key fields:
 | purchase-order-code | Purchase order, the numeric part of `spool-id` |
 | spool-sequence | Sequence within the order, the letter part of `spool-id` |
 | status | Lifecycle: `unopened`, `active`, `spent` |
-| card-uid | The NFC tag stuck to this spool |
+| card-uid | The NFC tag assigned to this spool |
+| master-spool | The master spool mounted on this spool; the key is written bare on every spool note, blank when it is on its own hardware |
+| spool-type | The form this spool was bought in, present on every spool note: `refill`, a bare core with no hardware of its own, or `spool`, its own hardware |
 | gross-weight | A measured total spool weight |
 | nominal-weight-grams | Override, when this spool differs from its type's default |
 | purchase-date | When it was bought |
 | purchase-price-dkk | Purchase price |
+| refill-reference-price-dkk | Observed market price of the same product as a plain refill, at purchase time |
 | retailer | Where it was bought |
 | lot-code | Manufacturer lot |
 
@@ -266,10 +272,22 @@ physical judgement a human makes; "412 g remain" is a running figure. Spoolman c
 express the second, and its `archived` flag is a boolean, so the three-state lifecycle
 has no equivalent there and is not a duplicate of it.
 
+Every Spool note is created at purchase, with its `spool-id` complete, so that the vault
+reflects inventory and filenames are stable from creation. The physical spool carries no
+id label until first use: the label is printed and stuck when the refill is started, and
+a plain refill's id is matched to a physical spool only at that moment -- identical
+refills are interchangeable, so whichever refill is started takes a not-yet-started
+spool's id, and a mixed order is told apart by its filament. A refill bought bundled
+with a master spool is identified from day one, because the master spool's id written on
+the shrink-wrap names it, so its `master-spool` field records the factory mount from
+purchase.
+
 **An NFC tag is never moved to another spool.** The tag is retired with the spool it was
-stuck to. That is what makes `card-uid` a permanent identity rather than one more interval
-to track; tags cost pennies, an interval model costs a design. The service refuses to
-resolve a uid claimed by two Spool notes.
+assigned to. A tag may be adhered to a master spool's disk, but a master spool is a
+mounting surface and never carries an identity across refills: the tag is discarded when
+the refill it was mounted with is spent. That is what makes `card-uid` a permanent
+identity rather than one more interval to track; tags cost pennies, an interval model
+costs a design. The service refuses to resolve a uid claimed by two Spool notes.
 
 ## Spool Stub
 
@@ -284,6 +302,58 @@ A stub never points at a stub. If the product matches no Filament note exactly, 
 is left bare and a review item raised. The product facts on the stub are what a human needs
 in order to decide which Filament it belongs to, and a placeholder pointing at a
 placeholder is two guesses deep.
+
+## Master Spool
+
+A reusable pair of plastic disks mounted on a refill spool's cardboard core, providing the
+wheels that let it stand and rotate on rollers. Tagged `3dprint/master-spool`, one note per
+physical pair, identified by a short label such as `ms1` printed on a sticker -- the
+master-spool counterpart of `spool-id`.
+
+A master spool is an owned asset in the Spool's sense, not a Spool: it holds no filament,
+is never consumed, and outlives many refills. Its note holds identity and provenance --
+brand, the disk pair's weight, purchase facts, and `acquired-with` when it arrived bundled
+with a refill.
+
+Attachment is not recorded here. It lives on the Spool note, as `master-spool`: cleared
+when the refill is spent, and set either at start -- when a refill is mounted onto an
+owned master spool, alongside `status: active` -- or at the spool note's creation, for a
+refill that arrived bundled with its master spool already mounted while `unopened`. Every Spool note is created at purchase, `spool-id` complete; only the physical label
+waits until first use. A bundled refill's physical spool is identified from day one,
+because the master spool's id, written by hand on the shrink-wrap, names it, and so the
+mount is recorded from day one and the free count is never wrong during the unopened
+window. The master spool's own label is printed only at unpacking: a sticker cannot go
+through shrink-wrap.
+
+Availability is derived and never stored: a master spool is free when no spool links it,
+or only a `spent` one does. Readiness depends on hardware, and is derived too: a refill
+(`spool-type: refill`) is ready to use as-is when its spool is `active` with
+`master-spool` set; a spool with its own hardware (`spool-type: spool`) is ready with
+the field blank. A
+`master-spool` link only ever appears on a refill -- a spool with its own hardware keeps
+the field blank for its whole life.
+
+Only current attachment is tracked. There is no mounting history and no reuse count;
+nothing yet needs one, and interval records are the Nozzle Installation pattern, a larger
+commitment than the questions being asked. See ADR 0007.
+
+Example:
+
+```yaml
+tags:
+  - 3dprint/master-spool
+```
+
+Key fields:
+
+| Field | Meaning |
+|---------|---------|
+| brand | Manufacturer of the disk pair |
+| weight-grams | Weight of the disk pair, for gross-weight tare |
+| purchase-date | When it was bought |
+| purchase-price-dkk | Purchase price; blank when bundled |
+| retailer | Where it was bought |
+| acquired-with | The Spool note it came bundled with, else blank |
 
 ## Nozzle
 
@@ -495,8 +565,9 @@ between them is drawn by the *nature of the fact*, not by convenience:
 | | Owner |
 |---|---|
 | What a spool is, when it was bought, from whom, at what price, its lot | **Vault** |
-| Which NFC tag is stuck to it | **Vault** |
+| Which NFC tag is assigned to it | **Vault** |
 | Lifecycle judgement: unopened / active / spent | **Vault** |
+| Which master spool is mounted on a spool | **Vault** |
 | How much remains, where it is, whether it is archived | **Spoolman** |
 | Per-job consumption history | **Vault** |
 
@@ -657,6 +728,22 @@ purchase order.
 
 Status prefixes intentionally reduce accidental selection of inactive spools.
 
+## Master Spools
+
+```text
+master-spool_<label>
+```
+
+Examples:
+
+```text
+master-spool_ms1
+master-spool_ms7
+```
+
+The label is printed on a sticker on the disk pair and is the master-spool counterpart of
+`spool-id`.
+
 ## Nozzles
 
 ```text
@@ -741,8 +828,11 @@ These identifiers:
 
 A spool also carries an NFC tag, whose uid is recorded as `card-uid`. The tag is never
 moved to another spool, so the uid is a permanent second identifier rather than an
-interval. The `spool-id` remains the primary key: it is human-readable, it survives a
-Spoolman database loss, and it is what is physically written on the label.
+interval. When the spool sits on a master spool the tag is adhered to the master spool's
+disk, but it is assigned to the refill and discarded with it; the master spool is a
+mounting surface, never an identity. The `spool-id` remains the primary key: it is
+human-readable, it survives a Spoolman database loss, and it is what is physically
+written on the label.
 
 ---
 
@@ -838,6 +928,7 @@ These are all consequences of the three-note split, and the migration tool conve
 | `filament:` on Usage pointing at a spool | ~669 notes; the key becomes `spool:` |
 | Product attributes duplicated across every spool of one product | e.g. `temp-range-°C` on ~42 notes, deduplicated onto Filament |
 | No `card-uid` anywhere | no tags applied yet; left blank |
+| No `master-spool`, `spool-type` fields or `3dprint/master-spool` notes | new entity (ADR 0007); the migration writes `master-spool` bare on every spool note and fills `spool-type` where the purchase form is known, and master-spool notes are created by hand as disk pairs are labelled |
 
 ## Unresolved: this document was wrong
 
@@ -882,7 +973,8 @@ These are all consequences of the three-note split, and the migration tool conve
 No longer speculative -- this is the mechanism *Spool Resolution* depends on. The
 workflow:
 
-- NFC tags attached to spools, one tag per spool, never re-used
+- NFC tags, one per spool, never re-used; adhered to the master spool's disk when the
+  spool sits on one, but assigned to the spool and discarded with it
 - Snapmaker U1 Extended Firmware reads the tag and resolves it against Spoolman
 - Moonraker records the resolved spool on the job
 - The service reads it back from the job history
