@@ -280,7 +280,8 @@ refills are interchangeable, so whichever refill is started takes a not-yet-star
 spool's id, and a mixed order is told apart by its filament. A refill bought bundled
 with a master spool is identified from day one, because the master spool's id written on
 the shrink-wrap names it, so its `master-spool` field records the factory mount from
-purchase.
+purchase. A pack that includes loose master spools names no refill from day one; its
+refills are matched to ids at first use like plain refills.
 
 **An NFC tag is never moved to another spool.** The tag is retired with the spool it was
 assigned to. A tag may be adhered to a master spool's disk, but a master spool is a
@@ -312,8 +313,8 @@ master-spool counterpart of `spool-id`.
 
 A master spool is an owned asset in the Spool's sense, not a Spool: it holds no filament,
 is never consumed, and outlives many refills. Its note holds identity and provenance --
-brand, the disk pair's weight, purchase facts, and `acquired-with` when it arrived bundled
-with a refill.
+brand, the disk pair's weight, purchase facts, `purchase-order-code` for the purchase
+order it arrived in, and `acquired-with` when it arrived mounted with a single refill.
 
 Attachment is not recorded here. It lives on the Spool note, as `master-spool`: cleared
 when the refill is spent, and set either at start -- when a refill is mounted onto an
@@ -337,6 +338,19 @@ Only current attachment is tracked. There is no mounting history and no reuse co
 nothing yet needs one, and interval records are the Nozzle Installation pattern, a larger
 commitment than the questions being asked. See ADR 0007.
 
+Pricing is order-level, not note-level. A purchase that brought master spools records the
+price actually paid on each refill Spool note it contains -- a one-to-one bundle's price
+whole on its refill, a pack's undivided price split equally across its refills, so the
+order's spool prices sum to what was paid -- and `refill-reference-price-dkk` on each of
+those refills records the plain-refill market price at purchase time. The premium, the
+refills' paid sum minus their reference sum, divided by the master spools the order
+brought, is each master spool's estimated marginal value in that purchase; it can be
+negative when a bulk discount subsidizes the spools, and it is never stored. A master
+spool's own `purchase-price-dkk` is filled only when the invoice prices the spool as its
+own line item. A master spool that arrives loose in a pack keeps `acquired-with` blank --
+no refill's shrink-wrap names it -- and is tied to the order by `purchase-order-code`.
+See ADR 0007.
+
 Example:
 
 ```yaml
@@ -351,9 +365,10 @@ Key fields:
 | brand | Manufacturer of the disk pair |
 | weight-grams | Weight of the disk pair, for gross-weight tare |
 | purchase-date | When it was bought |
-| purchase-price-dkk | Purchase price; blank when bundled |
+| purchase-order-code | The purchase order it was bought in, the same key the order's Spool notes carry; present on every master-spool note |
+| purchase-price-dkk | Purchase price; filled only when the invoice prices the spool as its own line item, blank when it arrived inside another purchase's undivided price |
 | retailer | Where it was bought |
-| acquired-with | The Spool note it came bundled with, else blank |
+| acquired-with | The Spool note it arrived mounted with when bundled one-to-one; blank otherwise |
 
 ## Nozzle
 
