@@ -58,6 +58,8 @@ A slicer-side grouping of several objects. When objects are grouped, the gcode r
 
 An assembly is therefore *not* a [[Model]] and never becomes a [[Model stub]]. The service refuses to derive a model from a name that is not a filename, and surfaces the printjob for manual handling instead. Not grouping objects in the slicer is a standing workflow rule.
 
+Unrelated to the vault's `3dprint/assembly` experiment notes (`assembly_*`, with their `bom:` lists): those are out of scope for this project and share only the word.
+
 ## Unattributed material
 
 The print data attributes material to a [[Slot]] -- index, colour, type, grams -- and to nothing more physical than that. It gives a nozzle diameter but no nozzle identity, and a slot index but no spool identity.
