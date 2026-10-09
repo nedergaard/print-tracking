@@ -255,7 +255,7 @@ Key fields:
 | spool-id | Physical identifier, e.g. `1a` |
 | purchase-order-code | The ordinal, per filament, of purchases of that filament -- the numeric part of `spool-id`, not an order id; the purchase itself is a Purchase Order note (ADR 0008) |
 | spool-sequence | Sequence within that purchase of that filament, the letter part of `spool-id` |
-| status | Lifecycle: `unopened`, `active`, `spent` |
+| status | Lifecycle: `unopened`, `active`, `spent`, `off-spool` |
 | card-uid | The NFC tag assigned to this spool |
 | master-spool | The master spool mounted on this spool; the key is written bare on every spool note, blank when it is on its own hardware |
 | spool-type | The form this spool was bought in, present on every spool note: `refill`, a bare core with no hardware of its own, or `spool`, its own hardware |
@@ -268,8 +268,15 @@ Key fields:
 
 `status` looks like live state but is not. "This spool is spent and went in the bin" is a
 physical judgement a human makes; "412 g remain" is a running figure. Spoolman can only
-express the second, and its `archived` flag is a boolean, so the three-state lifecycle
+express the second, and its `archived` flag is a boolean, so the four-state lifecycle
 has no equivalent there and is not a duplicate of it.
+
+`off-spool` names the loose remainder: filament kept without any spool hardware. Which
+spool it came from is still known, so identity and provenance survive the state change.
+It is kept because the remainder may be fused onto another spool, and it is the right
+material for a very small model. The spool's NFC tag is stored with the loose filament
+rather than discarded, so the chip follows the material out of the hardware, and the
+`master-spool` mount is cleared with the same edit.
 
 Every Spool note is created at purchase, with its `spool-id` complete, so that the vault
 reflects inventory and filenames are stable from creation. The physical spool carries no
@@ -285,7 +292,8 @@ refills are matched to ids at first use like plain refills.
 **An NFC tag is never moved to another spool.** The tag is retired with the spool it was
 assigned to. A tag may be adhered to a master spool's disk, but a master spool is a
 mounting surface and never carries an identity across refills: the tag is discarded when
-the refill it was mounted with is spent. That is what makes `card-uid` a permanent
+the refill it was mounted with is spent, and stored with the loose filament when the
+contents go off-spool. That is what makes `card-uid` a permanent
 identity rather than one more interval to track; tags cost pennies, an interval model
 costs a design. The service refuses to resolve a uid claimed by two Spool notes.
 
@@ -318,7 +326,7 @@ is the line link's job, and naming the refill a bundled master spool arrived mou
 is the spool note's own `master-spool` field, set from creation.
 
 Attachment is not recorded here. It lives on the Spool note, as `master-spool`: cleared
-when the refill is spent, and set either at start -- when a refill is mounted onto an
+when the refill is spent or its contents go off-spool, and set either at start -- when a refill is mounted onto an
 owned master spool, alongside `status: active` -- or at the spool note's creation, for a
 refill that arrived bundled with its master spool already mounted while `unopened`. Every Spool note is created at purchase, `spool-id` complete; only the physical label
 waits until first use. A bundled refill's physical spool is identified from day one,
@@ -328,7 +336,7 @@ window. The master spool's own label is printed only at unpacking: a sticker can
 through shrink-wrap.
 
 Availability is derived and never stored: a master spool is free when no spool links it,
-or only a `spent` one does. Readiness depends on hardware, and is derived too: a refill
+or only a `spent` or `off-spool` one does. Readiness depends on hardware, and is derived too: a refill
 (`spool-type: refill`) is ready to use as-is when its spool is `active` with
 `master-spool` set; a spool with its own hardware (`spool-type: spool`) is ready with
 the field blank. A
@@ -1070,7 +1078,7 @@ These are all consequences of the three-note split, and the migration tool conve
 | `date` is sometimes a string | Newer notes quote it (`date: "2026-08-29"`), legacy notes do not. This document says unquoted. |
 | Two wikilink quoting styles | Legacy notes use single quotes, newer ones double. This document says double. |
 | `model` is sometimes a list, sometimes a scalar | Legacy notes use a YAML list even for one model. Output notes take a single link. |
-| `status` on fewer than half of spools | ~44 of ~97 spool notes. Now defined as a three-state lifecycle (`unopened` / `active` / `spent`) owned by the vault, and the filename prefix is kept deliberately as a selection guard rather than treated as duplication. The gap is that most spools have no value, not that the field is wrong. |
+| `status` on fewer than half of spools | 53 of 99 spool notes carry no `status` key and 2 more carry it bare; the values in use also included a fourth state, `off-spool`, now part of the controlled set (`unopened` / `active` / `spent` / `off-spool`), owned by the vault. The filename prefix is kept deliberately as a selection guard rather than treated as duplication. The migration converts legacy `open` to `active` and passes `unopened`, `spent` and `off-spool` through; filling the blanks is a human task, listed by the `Spools-status-empty` view in `bases/nozzles.base` (tracked as issue 01 of the print-watcher-migration feature). Three notes are marked `off-spool` today and the true count is significantly higher; the physical review joins the same issue. |
 | Time-varying facts recorded as body prose | `[[2026-06-22]] Installed in tool 2` on Nozzle notes, `[[2025-12-13]] Dried 5 hours at 65°C` on Filament notes. This is the vault's de-facto mechanism for anything that changes over time and this document has never described it. Nozzle Installation formalises one case of it; drying and maintenance remain prose. |
 | Dataview queries embedded in note bodies | Several spool notes carry aggregation queries inline. A useful convention, undocumented, and duplicated by hand per note. **These query `#3dprint/usage ... WHERE filament = this.file.link` and will silently return nothing once the key becomes `spool`** -- auditing them is a named migration step, per ADR 0005. |
 | Undocumented entity types | `3dprint/build` and `3dprint/assembly`, one note each, both with inline rather than list-form tags. `assembly_soap-dispenser` uses a nested `bom:` list, the only nested-object frontmatter besides `assumptions`. |
@@ -1089,7 +1097,8 @@ No longer speculative -- this is the mechanism *Spool Resolution* depends on. Th
 workflow:
 
 - NFC tags, one per spool, never re-used; adhered to the master spool's disk when the
-  spool sits on one, but assigned to the spool and discarded with it
+  spool sits on one, but assigned to the spool -- stored with the loose filament when the
+  contents go off-spool, discarded when the spool is spent
 - Snapmaker U1 Extended Firmware reads the tag and resolves it against Spoolman
 - Moonraker records the resolved spool on the job
 - The service reads it back from the job history

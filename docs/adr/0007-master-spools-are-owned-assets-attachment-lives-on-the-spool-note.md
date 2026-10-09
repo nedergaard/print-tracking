@@ -25,7 +25,7 @@ master-spool is one more of those.
 
 Recording attachment on the master-spool note, as `mounted-on`, was also considered. The
 pairing is one fact, and it changes at or before the moments the spool note is being
-edited: a clear accompanies `status: spent`, and a mount accompanies `status: active` when
+edited: a clear accompanies `status: spent` or `status: off-spool`, and a mount accompanies `status: active` when
 a refill is mounted onto an owned master spool at start. A refill bought bundled with a
 master spool arrives mounted while `unopened`. Every spool's note is created at purchase,
 `spool-id` complete -- only the physical label waits until first use -- and a bundled
@@ -58,7 +58,7 @@ Spoolman was never a candidate: it cannot model a master-spool at all, and the q
 ## Consequences
 
 Availability is derived, never stored: a master-spool is free when no spool links it, or
-only a `spent` one does. Readiness is derived from hardware: a refill (`spool-type:
+only a `spent` or `off-spool` one does. Readiness is derived from hardware: a refill (`spool-type:
 refill` on the spool) is ready to use as-is when its spool is `active` with `master-spool`
 set; a spool with its own hardware (`spool-type: spool`) is ready with the field blank.
 The distinction is recorded rather than left to memory, because a blank `master-spool`
