@@ -1034,6 +1034,34 @@ revisits a note it has written, so it never clears its own review items.
 
 ---
 
+# Migration Provenance
+
+Notes that a migration pass has touched carry an append-only `migrated` list, one entry
+per pass:
+
+```yaml
+migrated:
+  - by: M3-v1
+    on: 2026-04-04
+  - by: print-watcher-migration
+    on: 2026-10-14
+```
+
+`by` names the migration, `on` the date that pass ran. The first entry is the
+Notion-to-vault migration (M3-v1), converted from the legacy flat `migrated_on` /
+`migrated_by` pair it wrote on 796 notes -- a record kept deliberately, because it is
+the only marker of which content predates the vault.
+
+The print-watcher migration appends its entry to every note it writes or rewrites,
+generated notes included: a rewritten printjob, an extracted output, a generated
+filament product note all carry the same stamp. Entries are never rewritten or removed;
+a partial re-run months later leaves visible strata of which notes were converted when.
+
+The service itself writes no `migrated` entry: a service-written note's provenance is
+its `printer-job-id`, and the service is the single writer of the shape it produces.
+
+---
+
 # Divergences From The Vault As It Stands
 
 The counts below come from an automated survey of the vault on 2026-09-14, and have not
@@ -1090,7 +1118,7 @@ These are all consequences of the three-note split, and the migration tool conve
 | Undocumented entity types | `3dprint/build` and `3dprint/assembly`, one note each (`build_2026-07-18_soap-dispenser`, `assembly_soap-dispenser`), both with inline rather than list-form tags, the assembly note carrying a nested `bom:` list. Decided 2026-10-09: these are experiments, out of scope for this project. They stay as they are, undocumented on purpose and untouched by the migration, and are unrelated to the glossary's *Assembly*, which names a slicer-side object grouping. |
 | Notes with no frontmatter at all | `alumina_log.md` is plain text with dated rows and no tag, so it is invisible to every query. Decided 2026-10-09: accepted as a plain log -- it stays as it is, out of scope, and no frontmatter or tag is added. |
 | `temp-range-°C` | ~42 notes carry a key with a non-ASCII character. Now documented on Filament, where the split also reduces it from ~42 copies to one per product, but the non-ASCII key name remains a hazard for any tooling that assumes ASCII. |
-| `migrated_on` / `migrated_by` | ~796 notes, the most widely used keys in the vault, and undocumented. Harmless, but they should either be described or dropped. |
+| `migrated_on` / `migrated_by` | 796 notes, the most widely used keys in the vault, and undocumented. Now documented: the pair is the Notion-to-vault migration's record, and the print-watcher migration converts it into the first entry of the append-only `migrated` list (*Migration Provenance*), appending its own entry to every note it touches, generated notes included. |
 | One malformed Nozzle note | `nozzle_0.4_brass_evatmaster 1.md` uses a space where its four siblings use an underscore, and carries `diameter-mm: 0.1` despite being named `0.4`. |
 
 ---
