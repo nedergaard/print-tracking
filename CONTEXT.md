@@ -74,13 +74,13 @@ The word previously meant a physical spool in this vault, which is what made `fi
 
 ## Spool
 
-One physical spool of one [[Filament]]. Tagged `3dprint/spool`, and identified by a `spool-id` such as `1a` -- a purchase order and a sequence within it -- which is printed on a physical label stuck to the spool.
+One physical spool of one [[Filament]]. Tagged `3dprint/spool`, and identified by a `spool-id` such as `1a` -- the ordinal, per filament, of purchases of that filament, and a sequence within that purchase -- which is printed on a physical label stuck to the spool.
 
 A spool's note is created at purchase, with its `spool-id` complete, so that the vault reflects inventory and filenames are stable from creation. The physical spool carries no id label until first use: it is printed and stuck when the refill is started, and a plain refill's id is matched to a physical spool only at that moment -- identical refills are interchangeable, so whichever refill is started takes a not-yet-started spool's id, and a mixed order is told apart by its filament. A refill bought bundled with a [[Master spool]] is identified from day one, because the master spool's id written on the shrink-wrap names it.
 
 A spool bought as a refill records `spool-type: refill`: it is a bare core with no hardware of its own, and can run only on a [[Master spool]]. A spool with its own hardware records `spool-type: spool`, and is ready to use as-is with `master-spool` blank. The field is present on every spool note -- absence is not used to carry meaning, because a query cannot ask for it without a silent failure.
 
-A spool note holds identity and provenance: what it is, when it was bought, from whom, at what price, its manufacturer lot, and the NFC tag assigned to it. It does **not** hold live state. How much remains, where it currently is, and whether it is archived are Spoolman's to know, because Spoolman is the thing being told about every gram as it is extruded.
+A spool note holds identity and provenance: what it is, when it was bought, from whom, its manufacturer lot, the NFC tag assigned to it, and the [[Invoice line]] it was bought on. It does **not** hold live state. How much remains, where it currently is, and whether it is archived are Spoolman's to know, because Spoolman is the thing being told about every gram as it is extruded.
 
 The apparent exceptions are lifecycle -- `unopened`, `active`, `spent` -- and which [[Master spool]] is mounted on it, which stay in the vault because they are physical judgements a human makes, not running figures. "This spool is spent and went in the bin" and "412 g remain" are two different facts, and Spoolman can only express the second.
 
@@ -94,15 +94,29 @@ Unlike a [[Nozzle installation]], a stub here is legitimate: Spoolman answers wi
 
 A stub never points at a stub. If the spool's product matches no [[Filament]] note exactly, `filament` is left bare and a [[Review item]] raised -- the product facts sitting on the stub are what a human needs to decide which filament it belongs to, and a placeholder pointing at a placeholder is two guesses deep.
 
+## Purchase order
+
+One real-world order of filament spools or master spools. Tagged `3dprint/purchase-order`, one note per order, named `purchase-order_<date>_<slug>` -- the slug is a human-chosen descriptor, present in every name, and the note name is the order's identity.
+
+An order holds what an invoice holds at the top: `purchase-date`, `retailer`, `shipping-dkk`. No total: the sum of its lines' prices plus shipping is derived, never stored. A purchase never had an identity before -- `purchase-order-code` on a [[Spool]] is the ordinal, per filament, of purchases of that filament, so a mixed order leaves several codes and no fact tying them to one purchase, and a purchase that brought only master spools leaves none (ADR 0008).
+
+## Invoice line
+
+One line of an order's invoice. Tagged `3dprint/purchase-line`, named `purchase-line_<date>_<order-slug>_<line-number>`, the line number taken from the invoice. The price-bearing unit: what the seller priced is the line, so prices live on lines and nowhere else, and a line's composition is the backlinks -- the [[Spool]] and [[Master spool]] notes whose `purchase-line` points here -- cross-checked against the line's counts.
+
+Field presence on a line is looser than on a spool note: an absent count means zero, and `refill-reference-price-dkk` is three-valued -- absent when the line brought no master spools, bare when it brought them but the plain-refill market price was never observed, filled with the fact. That is safe because line queries are presence filters, where a missing field matching nothing is the correct result; the spool-note doctrine guards against negation, which fails silently while looking valid.
+
+Costs are estimates and live at query time: a spool item's cost and a master spool's value are computed from its line by inline queries written into the note bodies, never stored. The allocation always exhausts the line price -- spool costs and master spool values sum to what was actually paid -- and a master spool's value is clamped at zero, so a bulk discount's surplus goes back to the refills (ADR 0008).
+
 ## Master spool
 
 A reusable pair of plastic disks mounted on a refill spool's cardboard core so that it can stand and rotate on rollers. Tagged `3dprint/master-spool`, one note per physical pair, identified by a short label such as `ms1` printed on a sticker -- the master-spool counterpart of a [[Spool]]'s `spool-id`.
 
-A master spool is an owned asset in the [[Spool]]'s sense, not a spool: it holds no filament, is never consumed, and outlives many refills. Its note holds identity and provenance -- brand, the disk pair's weight (the tare that makes a mounted spool's gross weight meaningful), purchase facts, `purchase-order-code` for the order it arrived in, and `acquired-with` when it arrived mounted with a single refill.
+A master spool is an owned asset in the [[Spool]]'s sense, not a spool: it holds no filament, is never consumed, and outlives many refills. Its note holds identity and provenance -- brand, the disk pair's weight (the tare that makes a mounted spool's gross weight meaningful), and the [[Invoice line]] it arrived on. Its purchase facts live on that line; the note carries no `acquired-with`, because naming the purchase is the line link's job and naming the refill it arrived mounted on is the spool's own `master-spool` field, set from creation.
 
 Attachment lives on the [[Spool]] note as `master-spool`, and is edited alongside `status` but is not the same fact: a clear accompanies `spent`, and a mount accompanies `active` only when a refill is mounted onto an owned master spool at start. A refill bought bundled with a master spool arrives mounted, inside the shrink-wrap, while still `unopened`; it is noted at purchase -- every spool's note is created at purchase with its id complete, and a bundled refill's physical spool is identified from day one as well: the master spool's id written on the shrink-wrap names it, which a plain refill's indistinguishable siblings cannot do for each other -- so its spool note is born with the field already set, and the free count is never wrong. The master spool's own label is printed only at unpacking: a sticker cannot go through shrink-wrap. A bundled refill is started before a plain refill of the same filament -- a standing practice: starting the plain refill would tie up a second master spool on one filament type. Availability is therefore derived, never stored: a master spool is free when no spool links it, or only a spent one does. A refill is ready to use as-is when its spool is `active` and links a master spool; a spool with its own hardware is ready without one. Only current attachment is recorded -- no mounting history, no reuse count -- because no question yet needs one.
 
-A purchase that brought master spools records the price actually paid on each refill spool note it contains -- a one-to-one bundle's price whole on its refill, a pack's undivided price split equally across its refills -- and `refill-reference-price-dkk` records what the same product cost as a plain refill at purchase time, a fact available on the day and forgotten soon after. The premium is an order-level quantity computed at query time: the order's refills' paid sum minus their reference sum, divided by the master spools the order brought. It is each master spool's estimated marginal value in that purchase, can be negative when a bulk discount subsidizes the spools, and is never stored. A master spool's own `purchase-price-dkk` is filled only when the invoice prices the spool as its own line item. A master spool that arrives loose in a pack has no refill to name, so `acquired-with` stays blank and `purchase-order-code` ties it to the order; the code is present on every master-spool note, for the same reason `master-spool` is present on every spool note.
+Prices live on invoice lines, never on spool or master-spool notes. A line that brought master spools carries `refill-reference-price-dkk` -- absent when it brought none, bare when it brought them but the plain-refill market price was never observed, filled with the fact -- and the premium, the line's price minus its refills' reference price, is each master spool's estimated marginal value in that purchase. It is computed at query time, clamped at zero -- a bulk discount is not a payment to take the spools -- and never stored.
 
 ## Print outcome
 

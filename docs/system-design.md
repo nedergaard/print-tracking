@@ -253,8 +253,8 @@ Key fields:
 |---------|---------|
 | filament | The product this is a spool of |
 | spool-id | Physical identifier, e.g. `1a` |
-| purchase-order-code | Purchase order, the numeric part of `spool-id` |
-| spool-sequence | Sequence within the order, the letter part of `spool-id` |
+| purchase-order-code | The ordinal, per filament, of purchases of that filament -- the numeric part of `spool-id`, not an order id; the purchase itself is a Purchase Order note (ADR 0008) |
+| spool-sequence | Sequence within that purchase of that filament, the letter part of `spool-id` |
 | status | Lifecycle: `unopened`, `active`, `spent` |
 | card-uid | The NFC tag assigned to this spool |
 | master-spool | The master spool mounted on this spool; the key is written bare on every spool note, blank when it is on its own hardware |
@@ -262,8 +262,7 @@ Key fields:
 | gross-weight | A measured total spool weight |
 | nominal-weight-grams | Override, when this spool differs from its type's default |
 | purchase-date | When it was bought |
-| purchase-price-dkk | Purchase price |
-| refill-reference-price-dkk | Observed market price of the same product as a plain refill, at purchase time |
+| purchase-line | The invoice line this spool was bought on; prices live there, never on the spool |
 | retailer | Where it was bought |
 | lot-code | Manufacturer lot |
 
@@ -313,8 +312,10 @@ master-spool counterpart of `spool-id`.
 
 A master spool is an owned asset in the Spool's sense, not a Spool: it holds no filament,
 is never consumed, and outlives many refills. Its note holds identity and provenance --
-brand, the disk pair's weight, purchase facts, `purchase-order-code` for the purchase
-order it arrived in, and `acquired-with` when it arrived mounted with a single refill.
+brand, the disk pair's weight, and the invoice line it arrived on. Its purchase facts
+live on that line, which is why the note carries no `acquired-with`: naming the purchase
+is the line link's job, and naming the refill a bundled master spool arrived mounted on
+is the spool note's own `master-spool` field, set from creation.
 
 Attachment is not recorded here. It lives on the Spool note, as `master-spool`: cleared
 when the refill is spent, and set either at start -- when a refill is mounted onto an
@@ -338,18 +339,15 @@ Only current attachment is tracked. There is no mounting history and no reuse co
 nothing yet needs one, and interval records are the Nozzle Installation pattern, a larger
 commitment than the questions being asked. See ADR 0007.
 
-Pricing is order-level, not note-level. A purchase that brought master spools records the
-price actually paid on each refill Spool note it contains -- a one-to-one bundle's price
-whole on its refill, a pack's undivided price split equally across its refills, so the
-order's spool prices sum to what was paid -- and `refill-reference-price-dkk` on each of
-those refills records the plain-refill market price at purchase time. The premium, the
-refills' paid sum minus their reference sum, divided by the master spools the order
-brought, is each master spool's estimated marginal value in that purchase; it can be
-negative when a bulk discount subsidizes the spools, and it is never stored. A master
-spool's own `purchase-price-dkk` is filled only when the invoice prices the spool as its
-own line item. A master spool that arrives loose in a pack keeps `acquired-with` blank --
-no refill's shrink-wrap names it -- and is tied to the order by `purchase-order-code`.
-See ADR 0007.
+Prices live on invoice lines, never on spool or master spool notes (ADR 0008). A line
+that brought master spools carries `refill-reference-price-dkk` -- absent when it brought
+none, bare when the market price was never observed, filled with the fact -- and the
+premium, the line's price minus its refills' reference price, is each master spool's
+estimated marginal value in that purchase, computed at query time and never stored. The
+value queries clamp at zero: a bulk discount is not a payment to take the master spools,
+so a negative premium's surplus goes back to the refills. Every master spool note body
+carries an inline query that computes its value from its line; see Purchase Line for the
+allocation.
 
 Example:
 
@@ -364,11 +362,70 @@ Key fields:
 |---------|---------|
 | brand | Manufacturer of the disk pair |
 | weight-grams | Weight of the disk pair, for gross-weight tare |
+| purchase-line | The invoice line it arrived on |
+
+## Purchase Order
+
+One real-world order of filament or master spools. Tagged `3dprint/purchase-order`, one
+note per order, named `purchase-order_<date>_<slug>` -- identity is the note name, and
+no numeric order id exists anywhere (a purchase never had one before; see ADR 0008).
+
+The order holds what an invoice holds at the top. Its lines link to it, and its total is
+the sum of its lines' prices plus shipping -- derived, never stored.
+
+Key fields:
+
+| Field | Meaning |
+|---------|---------|
 | purchase-date | When it was bought |
-| purchase-order-code | The purchase order it was bought in, the same key the order's Spool notes carry; present on every master-spool note |
-| purchase-price-dkk | Purchase price; filled only when the invoice prices the spool as its own line item, blank when it arrived inside another purchase's undivided price |
 | retailer | Where it was bought |
-| acquired-with | The Spool note it arrived mounted with when bundled one-to-one; blank otherwise |
+| shipping-dkk | Shipping paid, 0 when free |
+
+## Purchase Line
+
+One line of an order's invoice -- the price-bearing unit. What the seller priced is the
+line, so prices live on lines and nowhere else. Tagged `3dprint/purchase-line`, named
+`purchase-line_<date>_<order-slug>_<line-number>`, the line number taken from the
+invoice and sequenced within the order when the invoice does not number its lines.
+
+A line's composition is the backlinks -- the Spool and Master Spool notes whose
+`purchase-line` points here -- cross-checked against the line's counts rather than
+duplicated by them.
+
+Field presence on line notes is looser than the spool-note doctrine, deliberately: an
+absent count means zero, and `refill-reference-price-dkk` is three-valued. That is safe
+because line queries are presence filters -- a missing field matching nothing is the
+correct result -- whereas the spool-note doctrine guards against negation, which fails
+silently. See ADR 0008.
+
+Key fields:
+
+| Field | Meaning |
+|---------|---------|
+| name | What the line names, e.g. the pack or product |
+| purchase-order | The order this line belongs to |
+| purchase-date | When it was bought |
+| retailer | Where it was bought |
+| price-dkk | The line's price, as actually paid |
+| filament | The Filament this line bought; absent when the line is not a filament product |
+| refill-reference-price-dkk | Plain-refill market price at purchase time; absent when the line brought no master spools, bare when it brought them but the price was never observed, filled with the fact |
+| refill-count | Refills on this line; absent when zero |
+| spool-count | Spools with their own hardware on this line; absent when zero |
+| master-spool-count | Master spools on this line; absent when zero |
+
+Costs are estimates and live at query time, computed from the line by the inline queries
+in the spool and master spool note bodies. Let *items* be `refill-count + spool-count`,
+*masters* be `master-spool-count`, *ref* be `refill-reference-price-dkk`:
+
+- premium = `price-dkk - items x ref` when ref is present, 0 otherwise
+- a master spool's value = `max(0, premium) / masters`, 0 when masters is zero
+- a spool item's cost = `(price-dkk - masters x value) / items`
+
+Every branch -- positive premium, premium clamped at zero, reference price unknown with
+masters valued at zero -- exhausts the line price: spool costs and master spool values
+sum to what was actually paid. The clamp is a choice, not an error: a negative premium
+is mathematically consistent, but nobody was paid to take the master spools, so a bulk
+discount's surplus is returned to the refills.
 
 ## Nozzle
 
@@ -454,6 +511,11 @@ Represents a physical printer.
 
 The `printer` field on other notes is a bare string, not a link, so a Printer note is
 reference material rather than a join target.
+
+The print-tracking feature supports the Snapmaker U1 only, so the value the service writes
+is fixed -- `printer-snapmaker-u1` -- rather than read from the job. Legacy notes carry
+`ender-3-max` for the Ender; those values are correct and are never rewritten, the service
+being a create-only writer that never revisits an existing note.
 
 Example:
 
@@ -759,6 +821,41 @@ master-spool_ms7
 The label is printed on a sticker on the disk pair and is the master-spool counterpart of
 `spool-id`.
 
+## Purchase Orders
+
+```text
+purchase-order_<date>_<slug>
+```
+
+Examples:
+
+```text
+purchase-order_2026-10-05_sunlu-haul
+purchase-order_2026-10-12_3djake-restock
+```
+
+The slug is a human-chosen descriptor of the purchase, present in every name -- never
+appended only on collision, for the printjob reason: a name must not depend on what was
+named before it. The note name is the order's identity; there is no numeric order id
+anywhere in the vault.
+
+## Purchase Lines
+
+```text
+purchase-line_<date>_<order-slug>_<line-number>
+```
+
+Examples:
+
+```text
+purchase-line_2026-10-05_sunlu-haul_1
+purchase-line_2026-10-05_sunlu-haul_2
+```
+
+The line number is the invoice's own, the way the printjob slug carries the printer job
+id; when the invoice does not number its lines, the sequence within the order as entered
+is used. The date and order slug tie each line to its Purchase Order note at a glance.
+
 ## Nozzles
 
 ```text
@@ -810,8 +907,8 @@ a late nozzle record, is done by deleting it and letting the service write it ag
 
 # Spool Identification System
 
-Each spool receives a physical identifier combining a purchase order and a sequence within
-that order:
+Each spool receives a physical identifier combining a per-filament purchase ordinal and a
+sequence within that purchase:
 
 ```text
 1a
@@ -823,8 +920,10 @@ that order:
 
 Where:
 
-- Number = purchase order
-- Letter = sequence within purchase order
+- Number = the ordinal, per filament, of purchases of that filament -- not an order id.
+  One physical order of two filaments produces two numbers, and the purchase itself is
+  identified by its Purchase Order note (ADR 0008)
+- Letter = sequence within that purchase of that filament
 
 Stored as:
 
@@ -944,6 +1043,7 @@ These are all consequences of the three-note split, and the migration tool conve
 | Product attributes duplicated across every spool of one product | e.g. `temp-range-°C` on ~42 notes, deduplicated onto Filament |
 | No `card-uid` anywhere | no tags applied yet; left blank |
 | No `master-spool`, `spool-type` fields or `3dprint/master-spool` notes | new entity (ADR 0007); the migration writes `master-spool` bare on every spool note and fills `spool-type` where the purchase form is known, and master-spool notes are created by hand as disk pairs are labelled |
+| No `3dprint/purchase-order` or `3dprint/purchase-line` notes, and `purchase-price-dkk` on spool notes | new entities (ADR 0008); backfill groups existing notes into orders by purchase date plus retailer as a proposal for human confirmation, moves prices onto line notes, and writes bare `refill-reference-price-dkk` where the plain-refill market price was never observed |
 
 ## Unresolved: this document was wrong
 
@@ -954,6 +1054,7 @@ These are all consequences of the three-note split, and the migration tool conve
 | `lot-code` undocumented | ~59 Filament notes. Now documented. |
 | Model `name` field | This document listed a `name` key for Model notes. No Model note appears to use one; the name lives in the filename. Removed. |
 | Printer as an entity type | Two `printer_*` notes exist and 609 notes reference `printer`, but this document listed no Printer entity. Now documented, minimally. |
+| `printer` value has two forms | This document said one of the two forms was wrong. Neither is: legacy notes carry `ender-3-max` for the Ender, and the service writes `printer-snapmaker-u1`. The feature supports the Snapmaker U1 only, so the value the service writes is fixed rather than read from the job, and legacy values are correct and are never rewritten. |
 
 ## Unresolved: needs a decision or a clean-up
 
@@ -965,7 +1066,6 @@ These are all consequences of the three-note split, and the migration tool conve
 | Derived values stored on Nozzle notes | ~12 Nozzle notes carry `Hours used`, `Filament extruded` and `3D Prints`. These are derived values stored as facts, against this document's first principle. |
 | `nozzles.base` computes wear in hours | Its `hours_used` formula sums `duration-hours` over backlinked printjobs. A job spreads across up to four nozzles and the printer reports one duration, so this over-counts once per slot. Wear is grams. The formula is the mechanism this document's Nozzle section replaced and should be retired. |
 | Legacy capitalised keys | `Date bought` (~34), `Material` / `Diameter` (~33), `Distributor` (~30), `Last used` / `Hours used` / `Filament extruded` / `3D Prints` (~12 each). Duplicates of documented lower-case keys. |
-| `printer` value has two forms | Legacy notes say `printer: ender-3-max` unquoted; newer ones say `printer: "printer-snapmaker-u1"`, quoted and prefixed. One of the two is wrong. |
 | `printer_ender-3-max.md` is empty | Zero bytes, while ~553 printjobs reference that printer. |
 | `date` is sometimes a string | Newer notes quote it (`date: "2026-08-29"`), legacy notes do not. This document says unquoted. |
 | Two wikilink quoting styles | Legacy notes use single quotes, newer ones double. This document says double. |

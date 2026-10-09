@@ -9,8 +9,8 @@ bought when a master-spool is free, otherwise the small premium for a refill tha
 with one is mandatory. We track it as a first-class entity. One note per physical pair,
 tagged `3dprint/master-spool`, identified by a short label (`ms1`) printed on a sticker
 the way a spool's `spool-id` is. The note holds identity and provenance only: brand, the
-disk pair's weight, purchase facts, `purchase-order-code` for the purchase order it
-arrived in, and `acquired-with` when it arrived mounted with a single refill.
+disk pair's weight, and the invoice line it arrived on. Its purchase facts live on that
+line; purchases themselves are first-class notes (ADR 0008).
 Attachment is recorded on the Spool note, as `master-spool`, and only the current
 attachment is recorded anywhere.
 
@@ -44,16 +44,13 @@ later is additive; carrying them from the start is a commitment nothing has aske
 Linking a master-spool to its purchase was reopened by the pack case: refills bought as a
 pack that includes master-spools. The one-to-one bundle hides the linkage problem, because
 its master-spool arrives mounted on its refill: the refill's shrink-wrap names the pair,
-`acquired-with` points at that spool note, and the purchase is reachable through it. A
-pack ships its master-spools loose: no refill's shrink-wrap names anything, so
-`acquired-with` has nothing to point at, and purchase date plus retailer is not a key --
-two orders placed the same day would conflate silently. The purchase order is the
-grouping the price arithmetic already operates over, and the order's refill notes carry
-it by construction (`purchase-order-code`), so the master-spool note carries the same key
-and the count of master-spools an order brought becomes a flat query rather than a
-recollection. Pointing `acquired-with` at an arbitrary refill from the pack was rejected
-on the same grounds as fuzzy model matching: a plausible wrong link is worse than a
-visible hole.
+and the purchase is reachable through that spool note. A pack ships its master-spools
+loose: no refill's shrink-wrap names anything, and purchase date plus retailer is not a
+key -- two orders placed the same day would conflate silently. Pointing `acquired-with`
+at an arbitrary refill from the pack was rejected on the same grounds as fuzzy model
+matching: a plausible wrong link is worse than a visible hole. The resolution came from
+outside this ADR: purchases became first-class (ADR 0008), and the master-spool note
+links the invoice line it arrived on, which carries the purchase facts the note does not.
 
 Spoolman was never a candidate: it cannot model a master-spool at all, and the questions
 ("how many free", "which filaments ready") are vault queries.
@@ -81,27 +78,18 @@ identity across refills. The previous rule said the tag is retired with the spoo
 a fresh tag and a fresh Spoolman `card_uids` entry, so no re-mapping ever happens, and the
 no-interval property that rule protects (see ADR 0006) is preserved.
 
-A purchase that brought master-spools records, on each refill spool note it contains, the
-price actually paid and `refill-reference-price-dkk`: the observed market price of the
-same product as a plain refill at purchase time -- a fact available on the day and
-forgotten soon after, which is why it is worth recording. A refill bought one-to-one with
-a master spool records the bundle's whole price. A pack bought at one undivided price
-splits it equally across its refills' notes -- the one allocation the rule makes,
-because a pack price is a fact about the order that no single refill note can carry whole
-without breaking the sum, and an equal split is the only division with no basis to
-dispute. The premium is not netted out of refill prices, because that allocation would be
-a stored estimate; it stays distributed inside them. It remains computable at query time,
-now as an order-level quantity: the sum of the order's refills' purchase prices minus the
-sum of their reference prices, divided by the number of master-spools the order brought
--- a count the master-spool notes' `purchase-order-code` supplies. The one-to-one bundle
-is the degenerate case, read off a single note. The premium is each master-spool's
-estimated *marginal* value in that purchase, not its market value; it can be negative
-when a bulk discount subsidizes the spools, which is a correct answer rather than a bug.
-It is never stored. A master-spool note's `purchase-price-dkk` stays blank in such a
-purchase and is filled only when the invoice prices the spool as its own line item -- a
-fact of the day rather than an allocation. `purchase-order-code` is present on every
-master-spool note rather than absent on standalone ones, for the same Dataview reason as
-`master-spool` on spool notes.
+Prices live on invoice lines, never on spool or master-spool notes (ADR 0008). A line
+that brought master-spools carries `refill-reference-price-dkk`: the observed market
+price of the same product as a plain refill at purchase time -- a fact available on the
+day and forgotten soon after, which is why it is worth recording. The key is
+three-valued: absent when the line brought no master-spools, bare when it brought them
+but the market price was never observed, filled with the fact. The premium, the line's
+price minus its refills' reference price, stays computable at query time and is each
+master-spool's estimated *marginal* value in that purchase, not its market value; it is
+never stored. It can be negative when a bulk discount subsidizes the spools, which is a
+correct answer rather than a bug; the value queries nevertheless clamp a master-spool's
+computed value at zero -- nobody was paid to take the spools -- and give the surplus to
+the refills.
 
 The gross weight of a mounted spool includes the master-spool's disks, so the master-spool
 note's `weight-grams` completes the tare chain for remaining-filament estimates.
