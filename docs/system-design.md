@@ -198,6 +198,11 @@ could not match to an existing Model.
 Tagged `3dprint/model-stub` rather than `3dprint/model`, so that machine-made placeholders
 never masquerade as curated content and can be listed for merging by hand.
 
+Merging is by hand, and the accepted path is reactive: rather than authoring `model-files`
+across the corpus up front, a stub is merged when it appears. A merge is not finished until
+the label's filename is added to the curated note's `model-files` -- without that, the same
+stub reappears on the next print of the model.
+
 ## Filament
 
 Represents a *type* of filament: a product, not a physical thing.
@@ -1052,6 +1057,8 @@ These are all consequences of the three-note split, and the migration tool conve
 | No `card-uid` anywhere | no tags applied yet; left blank |
 | No `master-spool`, `spool-type` fields or `3dprint/master-spool` notes | new entity (ADR 0007); the migration writes `master-spool` bare on every spool note and fills `spool-type` where the purchase form is known, and master-spool notes are created by hand as disk pairs are labelled |
 | No `3dprint/purchase-order` or `3dprint/purchase-line` notes, and `purchase-price-dkk` on spool notes | new entities (ADR 0008); backfill groups existing notes into orders by purchase date plus retailer as a proposal for human confirmation, moves prices onto line notes, and writes bare `refill-reference-price-dkk` where the plain-refill market price was never observed |
+| Untagged Model notes | 363 `model_*` files, only 95 tagged -- 268 have no `tags` key at all, so queries over the tag silently miss most of the corpus. The migration tags every `model_*` note `3dprint/model`, name being the signal per the vault's own naming convention. The `models_no-time` view in `bases/nozzles.base` empties when this lands. |
+| Legacy capitalised keys | `Date bought` (~34), `Material` / `Diameter` (~33), `Distributor` (~30): duplicates of documented lower-case keys, every one of them with its lower-case counterpart already present on the same note (verified 2026-10-09; paired values agree, `Material` and `Distributor` differing only in letter case). The migration drops the capitalised duplicate, renaming only where no counterpart exists -- one note, `printer_snapmaker-u1.md`'s `Date bought` to `purchase-date`. `Last used` / `Hours used` / `Filament extruded` / `3D Prints` (~12 each) are Notion-computed historical records (see the derived-values row), kept deliberately rather than cleaned up. |
 
 ## Unresolved: this document was wrong
 
@@ -1068,12 +1075,11 @@ These are all consequences of the three-note split, and the migration tool conve
 
 | Divergence | Detail |
 |---|---|
-| **The model join key may not exist** | This document and the service's model matching both depend on `model-files` as the join key between a Model note and a slicer object label. No such key, under that name or the older `stl-files`, appeared in the survey's key census. If it is genuinely absent, every Output will generate a Model Stub. **Verify before trusting model matching.** If notes do carry `stl-files`, the migration tool must rename it. |
-| Untagged Model notes | ~363 `model_*` files but far fewer carry `3dprint/model`. Dataview queries over the tag silently miss most of the corpus. |
-| `status-print` is not a controlled set | Present on only ~210 of ~609 printjob notes, with roughly 30 distinct values that mix outcome and cause, including both `bed-adhesion` and `failed_bed-adhesion`. This document now specifies `success`, `cancelled`, `failed`; a cause belongs in a human-written `status-note`. The migration tool requires an operator-authored map from old values to new. |
-| Derived values stored on Nozzle notes | ~12 Nozzle notes carry `Hours used`, `Filament extruded` and `3D Prints`. These are derived values stored as facts, against this document's first principle. |
+| **The model join key does not exist** | Verified 2026-10-09: none of the 363 Model notes carries `model-files` or the older `stl-files`, so every Output generates a Model Stub until a merge adds the filename to a curated Model note. The accepted path is reactive: stubs are the work queue and merges are by hand, each merge adding the label's filename to the curated note's `model-files` so the stub cannot reappear. No migration rename step is needed (issue 02 of the print-watcher service). |
+| `status-print` is not a controlled set | Present on 210 of ~609 printjob notes: 11 distinct values (verified 2026-10-09) that mix outcome and cause, including both `bed-adhesion` and `failed_bed-adhesion`. This document now specifies `success`, `cancelled`, `failed`; a cause belongs in a human-written `status-note`. The migration tool requires an operator-authored map from old values to new; a complete draft from the census sits in the print-watcher repo's migration feature directory. |
+| Derived values stored on Nozzle notes | ~12 Nozzle notes carry `Hours used`, `Filament extruded`, `Last used` and `3D Prints`. They were computed by Notion, where these notes were hosted before the vault, and are kept deliberately rather than retired: they are the only record of the pre-service era, and `Filament extruded` is already in grams, the unit ADR 0003 made canonical, so it carries the wear metric's history across the format change. Comparing `Hours used` against the base's duration-derived figure is the detector for missing `duration-hours` (25 printjobs lack it). `3D Prints`, a Notion relation list, is redundant with Obsidian backlinks. |
+| Migrated `extruded-grams` contain export errors | At least one printjob (`printjob_2021-12-25_First print`) carries `107` where the print was 10.7 g -- a decimal lost in the Notion-to-vault migration. The values are corrected at source against a fresh Notion export (issue 02 of the print-watcher-migration feature), because the migration tool copies `extruded-grams` into the extracted Usage notes unchanged and nozzle wear is the sum of grams over Usage notes. |
 | `nozzles.base` computes wear in hours | Its `hours_used` formula sums `duration-hours` over backlinked printjobs. A job spreads across up to four nozzles and the printer reports one duration, so this over-counts once per slot. Wear is grams. The formula is the mechanism this document's Nozzle section replaced and should be retired. |
-| Legacy capitalised keys | `Date bought` (~34), `Material` / `Diameter` (~33), `Distributor` (~30), `Last used` / `Hours used` / `Filament extruded` / `3D Prints` (~12 each). Duplicates of documented lower-case keys. |
 | `printer_ender-3-max.md` is empty | Zero bytes, while ~553 printjobs reference that printer. |
 | `date` is sometimes a string | Newer notes quote it (`date: "2026-08-29"`), legacy notes do not. This document says unquoted. |
 | Two wikilink quoting styles | Legacy notes use single quotes, newer ones double. This document says double. |

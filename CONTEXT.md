@@ -42,6 +42,8 @@ A Model note created by the service because gcode named a model file it could no
 
 Tagged distinctly from a curated Model so that machine-made placeholders never masquerade as curated content and can be listed for merging.
 
+Merging is hand work, and the accepted path is reactive: a stub is merged when it appears. A merge is not finished until the label's filename is added to the curated note's `model-files` -- without it, the same stub reappears on the next print of that model.
+
 Matching is exact, never fuzzy: a wrong model link is unrecoverable noise in a 366-model vault, whereas an unmatched stub is visible work.
 
 ## Create-only writer
