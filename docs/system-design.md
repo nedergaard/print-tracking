@@ -440,6 +440,15 @@ sum to what was actually paid. The clamp is a choice, not an error: a negative p
 is mathematically consistent, but nobody was paid to take the master spools, so a bulk
 discount's surplus is returned to the refills.
 
+An item the seller shipped un invoiced -- an extra spool sent as customer care, say -- is
+a line of its own on the order it arrived with, priced 0, its `name` saying what it is,
+e.g. `gratis extra -- blue PETG`. Zero is what was actually paid, so the price's home is
+still the line; a gift is not a purchase, so it never gets an order of its own. The line
+is on no invoice, so its number is the next in the order's sequence, and the spool that
+arrived on it keeps the `spool-id` it was bought alongside: the ordinal counts purchases
+of a filament, and a gift arrives with one. The allocation is untouched -- a zero-price
+line exhausts at zero, and the order total still sums to what was paid.
+
 ## Nozzle
 
 Represents a physical nozzle.
