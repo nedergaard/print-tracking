@@ -20,6 +20,7 @@ This Obsidian-based system tracks:
 - Print history
 - Filament inventory and consumption
 - Master-spool inventory
+- Dryboxes and their upgrade-part status
 - Nozzle wear
 - Model usage
 - Cost and production metrics
@@ -30,7 +31,7 @@ estimated values where possible.
 Derived values (remaining filament, nozzle wear, model print time, costs, etc.) should be
 calculated from recorded facts.
 
-Print history is no longer entered by hand. The print-tracking feature polls the printer and writes the notes for each finished job. Curated content (Model, Filament, Nozzle) and
+Print history is no longer entered by hand. The print-tracking feature polls the printer and writes the notes for each finished job. Curated content (Model, Filament, Nozzle, Drybox) and
 the human judgements the printer cannot know (why a print failed, which nozzle is fitted
 where) remain hand-authored.
 
@@ -229,6 +230,7 @@ Key fields:
 | density | g/cm³, for length/weight conversion |
 | temp-range-c | Recommended temperatures |
 | nominal-weight-grams | Net weight of a full spool of this product |
+| storage | Where spools of this filament must be kept, e.g. `drybox`; a product property, never a list of boxes (ADR 0009) |
 
 This word previously meant a physical spool in this vault, which is what made `filament`
 on a Usage note ambiguous: the key named a product but pointed at an instance. The term
@@ -376,6 +378,72 @@ Key fields:
 | brand | Manufacturer of the disk pair |
 | weight-grams | Weight of the disk pair, for gross-weight tare |
 | purchase-line | The invoice line it arrived on |
+
+## Drybox
+
+Represents a dry-storage container for filament spools: an owned asset in the Master Spool
+sense -- it holds no filament itself, is never consumed, and outlives the spools stored in
+it. One note per physical box, tagged `3dprint/drybox`, identified by a short label (`db1`)
+printed on a sticker.
+
+Example:
+
+```yaml
+tags:
+  - 3dprint/drybox
+label: db1
+location: shelf-2
+capacity-spools: 4
+printed-parts:
+  - model: "[[model_drybox-base_v2]]"
+    status: needed
+  - model: "[[model_drybox-roller]]"
+    status: mounted
+purchased-parts:
+  - name: desiccant pouch
+    status: bought
+```
+
+Key fields:
+
+| Field | Meaning |
+|---------|---------|
+| label | Physical identifier, e.g. `db1`; also the value of a spool's Spoolman `location` when the spool is in this box |
+| location | Where the box itself sits; a human-maintained judgement, present on every note, bare when unknown |
+| capacity-spools | How many spools the box holds; the unit is in the key name |
+| printed-parts | Required printed parts: entries of `{model, status}`, one entry per physical unit |
+| purchased-parts | Required purchased parts: entries of `{name, status}`, one entry per physical unit |
+
+Both parts keys are present on every drybox note, empty when there are none -- an absent
+key silently matches nothing in a query. A drybox carries no `purchase-line` (provenance
+deliberately untracked) and no lifecycle status (a field exists only when a query asks for
+it). See ADR 0009.
+
+### Drybox part
+
+One item required to complete a drybox upgrade, recorded as an entry in `printed-parts` or
+`purchased-parts`. `status` is a stored fact from a controlled set: `needed`, `ordered`,
+`printed`, `bought`, `mounted`, `not-needed`. `mounted` is terminal for the box;
+`not-needed` covers the either/or case -- a part fulfillable by printing or by buying:
+fulfill one, mark the other `not-needed`.
+
+The status is authoritative for the box and is never derived from Output: an Output is an
+immutable event, never decremented, and which printed part is allocated to which box is a
+human judgement. There is no cross-check and no review item -- the service never writes
+drybox notes; the fields are hand-maintained like a spool's `status`.
+
+Derived at query time, never stored: per-box "what's missing" (entries whose status is
+neither `mounted` nor `not-needed`), "box complete" (every entry in both lists `mounted`
+or `not-needed`), and "do I need to print more parts for dryboxes" (`printed-parts` with
+`status: needed`, grouped by `model` across all boxes).
+
+### Occupancy and storage requirements
+
+Which spool is in which drybox is live state and Spoolman's to know: the spool's Spoolman
+`location` names the drybox label, and the two systems join on that label -- the vault
+never stores spool location. Which filaments want a drybox is a product property on the
+Filament note (`storage: drybox`), never a list on the drybox. No humidity or desiccant
+telemetry is recorded anywhere; drying remains dated prose on Filament notes.
 
 ## Purchase Order
 
@@ -668,6 +736,8 @@ between them is drawn by the *nature of the fact*, not by convenience:
 | Lifecycle judgement: unopened / active / spent | **Vault** |
 | Which master spool is mounted on a spool | **Vault** |
 | How much remains, where it is, whether it is archived | **Spoolman** |
+| Which drybox a spool is in | **Spoolman** -- the spool's `location` names the drybox label; the vault joins on the label |
+| Where a drybox itself sits | **Vault** -- `location` on the drybox note; Spoolman has no container entity |
 | Per-job consumption history | **Vault** |
 
 That last row is not a mistake. Spoolman stores a single running `used_weight` per spool
@@ -842,6 +912,22 @@ master-spool_ms7
 
 The label is printed on a sticker on the disk pair and is the master-spool counterpart of
 `spool-id`.
+
+## Dryboxes
+
+```text
+drybox_<label>
+```
+
+Examples:
+
+```text
+drybox_db1
+drybox_db2
+```
+
+The label is printed on a sticker on the box -- the drybox counterpart of `spool-id` -- and
+is also what a spool's Spoolman `location` names when the spool is stored in the box.
 
 ## Purchase Orders
 

@@ -128,6 +128,26 @@ Attachment lives on the [[Spool]] note as `master-spool`, and is edited alongsid
 
 Prices live on invoice lines, never on spool or master-spool notes. A line that brought master spools carries `refill-reference-price-dkk` -- absent when it brought none, bare when it brought them but the plain-refill market price was never observed, filled with the fact -- and the premium, the line's price minus its refills' reference price, is each master spool's estimated marginal value in that purchase. It is computed at query time, clamped at zero -- a bulk discount is not a payment to take the spools -- and never stored.
 
+## Drybox
+
+A dry-storage container for filament spools: a physical box, an owned asset in the [[Master spool]]'s sense. It holds no filament itself, is never consumed, and outlives the spools stored in it. Tagged `3dprint/drybox`, one note per physical box, named `drybox_<label>` and identified by a short label such as `db1` printed on a sticker -- the drybox counterpart of a [[Spool]]'s `spool-id` and a [[Master spool]]'s label.
+
+A drybox note holds identity and placement, and nothing live: `label`, `location` (where the box itself sits -- a human-maintained physical judgement, present on every drybox note, bare when unknown), and `capacity-spools` (the unit is in the key name, per the `diameter-mm` convention). It carries no `purchase-line` -- provenance for the box is deliberately not tracked -- and no lifecycle status, because a field exists only when a query asks for it (ADR 0009).
+
+Which [[Spool]] is inside a drybox is not a vault fact. A spool's location is live state and Spoolman's to know, so Spoolman's spool `location` names the drybox label (`db1`) and the two systems join on that label. The box's own `location` says where the box is, which Spoolman cannot hold because it has no container entity. "Where is spool X" is a Spoolman query, "where is db1" a vault query, and the compound answer joins the two at query time rather than copying live state into the vault. No humidity or desiccant telemetry is recorded anywhere; drying stays dated prose on the [[Filament]] note.
+
+Which filaments want a drybox is a product property and lives on the [[Filament]] note as `storage: drybox`, never as a list on the drybox. Whether a drybox's upgrade is complete is [[Drybox part]] status, derived at query time, never stored.
+
+## Drybox part
+
+One item required to complete a [[Drybox]] upgrade: a printed part or a purchased part. Recorded as an entry in the drybox note's `printed-parts` or `purchased-parts` list, one entry per physical unit -- four rollers are four entries, each with its own `status`. Both keys are present on every drybox note, empty when there are none, because an absent key silently matches nothing in a query.
+
+A `printed-parts` entry links the [[Model]] to print (`model`) and carries `status`; a `purchased-parts` entry carries a `name` and `status`, with no provenance. `status` is a stored fact from a controlled set: `needed`, `ordered`, `printed`, `bought`, `mounted`, `not-needed`. `mounted` is terminal for the box; `not-needed` covers the either/or case -- rollers printable or buyable: fulfill one, mark the other `not-needed`.
+
+The status is authoritative for the box and is not derived from [[Output]]: an Output is an immutable event, never decremented, and which printed part is allocated to which box is a human judgement, so "a base was printed" and "db1's base is done" are two different facts, and the per-box status is the one that is not derivable. There is no cross-check and no review item -- the service never writes drybox notes; the fields are hand-maintained like a spool's `status`.
+
+Derived at query time, never stored: per-box "what's missing" (entries whose status is neither `mounted` nor `not-needed`), "box complete" (every entry in both lists `mounted` or `not-needed`), and "do I need to print more parts for dryboxes" (`printed-parts` entries with `status: needed`, grouped by `model` across all dryboxes).
+
 ## Print outcome
 
 The outcome of a printjob, drawn from a controlled set: success, cancelled, failed.
