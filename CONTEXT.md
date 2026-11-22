@@ -216,3 +216,7 @@ A review item is not an assumption. An `assumptions` entry says *we inferred thi
 Review items live in the note rather than in a log because the vault is where the work gets done. A single query over `needs-review` is the whole backlog; a warning in a log nobody reads is not a work item at all.
 
 Clearing one is a human act: fill the field in, delete the block. The service never revisits a note, so it never clears its own review items -- see [[Create-only writer]].
+
+## Census
+
+An exhaustive scan of the vault for one fact: every note carrying a given key, and every distinct parsed value of it -- not a sample. The 2026-10-09 census found 210 notes carrying `status-print` and 11 distinct parsed values; a value that enters the vault after the census is absent from the operator-authored map and the tool refuses on it. The migration's censuses (filament tuples, spool statuses, `#3dprint/filament` references) are produced by `pw census list-*` and must be covered completely by the maps the operator authors from them.
