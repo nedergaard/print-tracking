@@ -12,7 +12,10 @@ later, as sibling `migrate` commands in the same CLI.
 - Every note iteration 1 writes or rewrites gets a `migrated` list entry
   `{by: pw migrate split-filament, on: <run date>, version: <assembly version + git sha>}`,
   appended append-only. A legacy flat `migrated_on`/`migrated_by` pair on a touched note
-  becomes the first entry (`{by: M3-v1, on: 2026-04-04}`). Recording the version is what
+  becomes the first entry with its values copied verbatim (`{by: <migrated_by>,
+  on: <migrated_on>}`; known `by` values are `M3-v1` for the machine pass and
+  `manual-notion-backfill` for notes backfilled by hand from the 2026-11-23 Notion
+  export). Recording the version is what
   lets several tool iterations leave distinguishable strata on notes touched more than
   once.
 - Later iterations detect what iteration 1 already did: a note tagged `3dprint/spool`
