@@ -1,3 +1,8 @@
+---
+context-type: project
+slug: print-tracking
+---
+
 # Context
 
 Glossary for the print-tracking feature and the 3D-printing notes it writes into the Obsidian vault (`nedergaard/leandervault`, notes under `para.resources/3d/printer/`).
